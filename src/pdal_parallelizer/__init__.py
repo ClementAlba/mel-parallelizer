@@ -202,21 +202,15 @@ def process_pipelines(
 
     click.echo('Parallelization started.\n')
 
-    graph = dask.delayed(delayed)
-    graph.visualize("D:/data_dev/street_pointcloud_process/graph.svg")
-    graph.compute()
-
-    # if diagnostic:
-    #     ms = MemorySampler()
-    #     with ms.sample(label='execution', client=client):
-    #         delayed = client.compute(delayed)
-    #         progress(delayed)
-    #     ms.plot()
-    # else:
-    #     delayed = client.compute(delayed)
-    #     progress(delayed)
-
-    del delayed
+    if diagnostic:
+        ms = MemorySampler()
+        with ms.sample(label='execution', client=client):
+            delayed = client.compute(delayed)
+            progress(delayed)
+        ms.plot()
+    else:
+        delayed = client.compute(delayed)
+        progress(delayed)
 
     file_manager.getEmptyWeight(output_directory=output)
 
@@ -241,5 +235,6 @@ if __name__ == '__main__':
         config="D:\\data_dev\\pdal-parallelizer\\config.json",
         input_type="dir",
         timeout=500,
-        n_workers=6
+        n_workers=6,
+        diagnostic=True
     )
