@@ -5,41 +5,38 @@ Responsible for all the executions, serializations or creations of object we nee
 """
 
 import dask
+import dask.array
 from dask.distributed import Lock
 import tile
 import cloud
 import bounds
 import pickle
+import numpy as np
 import os
 
 
 @dask.delayed
-def process(pipeline, temp_dir=None):
-    """Process pipeline and delete the associate temp file if it's not a dry run"""
-    if temp_dir:
-        with Lock(str(pipeline[1])):
-            # Get the temp file associated with the pipeline
-            temp_file = temp_dir + '/' + str(pipeline[1]) + '.pickle'
-        # Execute the pipeline
-        if pipeline[0].streamable:
-            pipeline[0].execute_streaming()
-        else:
-            pipeline[0].execute()
+def execute_stages(stages):
+    readers_stage = stages.pop(0)
+    readers = readers_stage.pipeline()
+    iterator = readers.iterator()
+    arrays = [*iterator]
 
-        del pipeline
-        try:
-            # Remove the temp file
-            os.remove(temp_file)
-        except FileNotFoundError:
-            pass
-    # Don't need to get and suppress the temp file if it's a dry run
-    else:
-        if pipeline[0].streamable:
-            pipeline[0].execute_streaming()
-        else:
-            pipeline[0].execute()
+    for stage in stages:
+        for i in range(len(arrays)):
+            pipeline = stage.pipeline(arrays[i])
+            pipeline.execute()
+            if len(pipeline.arrays[0]) > 0:
+                arrays[i] = pipeline.arrays[0]
 
-        del pipeline
+    return arrays
+
+
+@dask.delayed
+def write_cloud(arrays, stage):
+    full_array = np.concatenate(arrays)
+    stage = stage.pipeline(full_array)
+    stage.execute_streaming()
 
 
 def process_serialized_pipelines(temp_dir, iterator):
@@ -59,24 +56,19 @@ def process_serialized_pipelines(temp_dir, iterator):
 
 
 def process_pipelines(output_dir, json_pipeline, iterator, temp_dir=None, dry_run=False, is_single=False):
-    delayedPipelines = []
-    while True:
-        try:
-            # If it's a cloud, 'next(iterator)' is a tile. Else, 'next(iterator)' is a filepath so a tile must be
-            # created
-            t = next(iterator) if is_single else tile.Tile(next(iterator), output_dir, json_pipeline)
-            p = t.pipeline(is_single)
-            # If it's not a dry run, the pipeline must be serialized
-            if not dry_run:
-                serializePipeline(p, temp_dir)
-                delayedPipelines.append(dask.delayed(process)(p, temp_dir))
-            # If it's a dry run, the pipeline is not serialized
-            else:
-                delayedPipelines.append(dask.delayed(process)(p))
-        except StopIteration:
-            break
+    results = []
+    for item in iterator:
+        t = item if is_single else tile.Tile(item, output_dir, json_pipeline)
+        p = t.pipeline(is_single)
 
-    return delayedPipelines
+        stages = p[0]
+        writers = stages.pop()
+
+        arrays = execute_stages(stages)
+        result = write_cloud(arrays, writers)
+        results.append(result)
+
+    return results
 
 
 def splitCloud(filepath, output_dir, json_pipeline, tile_bounds, nTiles=None, buffer=None, remove_buffer=False, bounding_box=None):

@@ -3,6 +3,7 @@ import logging
 import os
 import os.path
 import click
+import dask
 import pdal
 from dask import config as cfg
 from dask.distributed import LocalCluster, Client, progress
@@ -202,15 +203,19 @@ def process_pipelines(
 
     click.echo('Parallelization started.\n')
 
-    if diagnostic:
-        ms = MemorySampler()
-        with ms.sample(label='execution', client=client):
-            delayed = client.compute(delayed)
-            progress(delayed)
-        ms.plot()
-    else:
-        delayed = client.compute(delayed)
-        progress(delayed)
+    graph = dask.delayed(delayed)
+    graph.visualize("D:/data_dev/street_pointcloud_process/graph.svg")
+    graph.compute()
+
+    # if diagnostic:
+    #     ms = MemorySampler()
+    #     with ms.sample(label='execution', client=client):
+    #         delayed = client.compute(delayed)
+    #         progress(delayed)
+    #     ms.plot()
+    # else:
+    #     delayed = client.compute(delayed)
+    #     progress(delayed)
 
     del delayed
 
@@ -238,5 +243,5 @@ if __name__ == '__main__':
         input_type="single",
         tile_size=(35, 35),
         timeout=500,
-        n_workers=6
+        n_workers=4
     )

@@ -108,7 +108,7 @@ class Tile:
 
         p = pdal.Pipeline(json.dumps(p))
 
-        return p, temp_name
+        return p.stages, temp_name
 
     def split(self, distTileX, distTileY, nTiles=None):
         """Split the tile in small parts of given sizes"""
