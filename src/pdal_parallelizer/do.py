@@ -32,25 +32,27 @@ def execute_stages(stages):
 
 
 @dask.delayed
-def write_cloud(array, stage):
+def write_cloud(array, stage, pipeline=None, temp_dir=None):
     stage = stage.pipeline(array)
     stage.execute_streaming()
+    if temp_dir:
+        try:
+            os.remove(temp_dir + '/' + str(pipeline) + '.pickle')
+        except FileNotFoundError:
+            pass
 
 
 def process_serialized_pipelines(temp_dir, iterator):
     """Create the array of delayed tasks for pipelines in the temp directory (if there is some)"""
-    delayedPipelines = []
-    # yield loop syntax
-    while True:
-        try:
-            p = next(iterator)
-        except StopIteration:
-            break
+    results = []
+    for item in iterator:
+        stages = item[1]
+        writers = stages.pop()
+        arrays = execute_stages(stages)
+        result = write_cloud(arrays, writers, item[2], temp_dir)
+        results.append(result)
 
-        # Add the delayed task to the array
-        delayedPipelines.append(dask.delayed(process)(p, temp_dir))
-
-    return delayedPipelines
+    return results
 
 
 def process_pipelines(output_dir, json_pipeline, iterator, temp_dir=None, dry_run=False, is_single=False):
@@ -59,12 +61,19 @@ def process_pipelines(output_dir, json_pipeline, iterator, temp_dir=None, dry_ru
         t = item if is_single else tile.Tile(item, output_dir, json_pipeline)
         p = t.pipeline(is_single)
 
-        stages = p[0]
-        writers = stages.pop()
+        stages = p[1]
 
-        arrays = execute_stages(stages)
-        result = write_cloud(arrays, writers)
-        results.append(result)
+        if not dry_run:
+            serializePipeline(p, temp_dir)
+            writers = stages.pop()
+            arrays = execute_stages(stages)
+            result = write_cloud(arrays, writers, p[2], temp_dir)
+            results.append(result)
+        else:
+            writers = stages.pop()
+            arrays = execute_stages(stages)
+            result = write_cloud(arrays, writers)
+            results.append(result)
 
     return results
 
@@ -83,7 +92,7 @@ def splitCloud(filepath, output_dir, json_pipeline, tile_bounds, nTiles=None, bu
 def serializePipeline(pipeline, temp_dir):
     """Serialize the pipelines"""
     # Create the temp file path
-    temp_file = temp_dir + '/' + str(pipeline[1]) + '.pickle'
+    temp_file = temp_dir + '/' + str(pipeline[2]) + '.pickle'
     with open(temp_file, 'wb') as outfile:
         # Serialize the pipeline
         pickle.dump(pipeline, outfile)

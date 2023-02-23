@@ -51,8 +51,7 @@ def config_dask(n_workers, threads_per_worker, timeout):
     cfg.set({'interface': 'lo'})
     cfg.set({'distributed.scheduler.worker-ttl': None})
     cfg.set({'distributed.comm.timeouts.connect': timeout})
-    cfg.set({'distributed.scheduler.worker-saturation': 1.0})
-    cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, silence_logs=logging.ERROR)
+    cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=None, silence_logs=logging.ERROR)
     client = Client(cluster)
     return client
 
@@ -242,5 +241,5 @@ if __name__ == '__main__':
         config="D:\\data_dev\\pdal-parallelizer\\config.json",
         input_type="dir",
         timeout=500,
-        n_workers=4
+        n_workers=6
     )
