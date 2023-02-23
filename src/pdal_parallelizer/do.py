@@ -19,23 +19,21 @@ import os
 def execute_stages(stages):
     readers_stage = stages.pop(0)
     readers = readers_stage.pipeline()
-    iterator = readers.iterator()
-    arrays = [*iterator]
+    readers.execute()
+    arr = readers.arrays[0]
 
     for stage in stages:
-        for i in range(len(arrays)):
-            pipeline = stage.pipeline(arrays[i])
-            pipeline.execute()
-            if len(pipeline.arrays[0]) > 0:
-                arrays[i] = pipeline.arrays[0]
+        pipeline = stage.pipeline(arr)
+        pipeline.execute()
+        if len(pipeline.arrays[0]) > 0:
+            arr = pipeline.arrays[0]
 
-    return arrays
+    return arr
 
 
 @dask.delayed
-def write_cloud(arrays, stage):
-    full_array = np.concatenate(arrays)
-    stage = stage.pipeline(full_array)
+def write_cloud(array, stage):
+    stage = stage.pipeline(array)
     stage.execute_streaming()
 
 

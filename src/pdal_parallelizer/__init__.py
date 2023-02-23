@@ -240,8 +240,7 @@ def process_pipelines(
 if __name__ == '__main__':
     process_pipelines(
         config="D:\\data_dev\\pdal-parallelizer\\config.json",
-        input_type="single",
-        tile_size=(35, 35),
+        input_type="dir",
         timeout=500,
         n_workers=4
     )
