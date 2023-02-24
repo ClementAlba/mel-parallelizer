@@ -13,6 +13,7 @@ import do
 import file_manager
 import cloud
 import tile
+import pipeline_manager
 from matplotlib import pyplot as plt
 import sys
 import ntpath
@@ -204,7 +205,7 @@ def process_pipelines(
 
     if merge_tiles and len(listdir(output)) > 1:
         input_filename = ntpath.basename(input_dir).split('.')[0]
-        writers = tile.get_writers(tile.load_pipeline(pipeline))
+        writers = tile.get_writers(pipeline_manager.load_pipeline(pipeline))
         merge = cloud.merge(output, input_filename, writers)
         if merge is not None:
             merge_ppln = pdal.Pipeline(merge)
