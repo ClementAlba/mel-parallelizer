@@ -8,8 +8,20 @@ A Cloud is composed of :
 
 import subprocess
 import json
+import pdal
+import pipeline_manager
 from bounds import Bounds
 from os import listdir
+
+
+def load_image_array(pipeline, filename):
+    p = pipeline_manager.load_pipeline(pipeline)
+    pipeline_manager.set_readers_filename(p, filename)
+    pdal_pipeline = pdal.Pipeline(json.dumps(p))
+    stages = pdal_pipeline.stages
+    readers = stages.pop(0).pipeline()
+    readers.execute()
+    return readers.arrays[0]
 
 
 def crop(bounds):

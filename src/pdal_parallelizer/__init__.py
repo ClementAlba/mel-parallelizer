@@ -51,54 +51,13 @@ def config_dask(n_workers, threads_per_worker, timeout):
     cfg.set({'interface': 'lo'})
     cfg.set({'distributed.scheduler.worker-ttl': None})
     cfg.set({'distributed.comm.timeouts.connect': timeout})
-    cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=None, silence_logs=logging.ERROR)
+    cluster = LocalCluster(n_workers=n_workers, threads_per_worker=threads_per_worker, memory_limit=None,
+                           silence_logs=logging.ERROR)
     client = Client(cluster)
     return client
 
 
-def process_pipelines(
-        config,
-        input_type,
-        timeout=None,
-        n_workers=3,
-        threads_per_worker=1,
-        dry_run=None,
-        diagnostic=False,
-        tile_size=(256, 256),
-        buffer=None,
-        remove_buffer=None,
-        bounding_box=None,
-        merge_tiles=False,
-        remove_tiles=False
-):
-    # Assertions
-    assert type(config) is str
-    assert input_type == "single" or input_type == "dir"
-    if timeout:
-        assert type(timeout) is int
-    assert type(n_workers) is int
-    assert type(threads_per_worker) is int
-    if dry_run:
-        assert type(dry_run) is int
-    assert type(diagnostic) is bool
-    assert type(tile_size) is tuple and len(tile_size) == 2
-    if buffer:
-        assert type(buffer) is int
-    if remove_buffer:
-        assert type(remove_buffer) is bool
-    if bounding_box:
-        assert type(bounding_box) is tuple
-        assert len(bounding_box) == 4
-    assert type(merge_tiles) is bool
-    assert type(remove_tiles) is bool
-
-    with open(config, 'r') as c:
-        config_file = json.load(c)
-        input_dir = config_file.get('input')
-        output = config_file.get('output')
-        temp = config_file.get('temp')
-        pipeline = config_file.get('pipeline')
-
+def print_warnings(n_workers, input_type, input_dir, output, temp, tile_size):
     if n_workers >= os.cpu_count():
         answer = query_yes_no(
             f'\nWARNING - You choose to launch {n_workers} workers but your machine has only {os.cpu_count()}'
@@ -151,6 +110,52 @@ def process_pipelines(
         if not answer:
             return
 
+
+def process_pipelines(
+        config,
+        input_type,
+        timeout=None,
+        n_workers=3,
+        threads_per_worker=1,
+        dry_run=None,
+        diagnostic=False,
+        tile_size=(256, 256),
+        buffer=None,
+        remove_buffer=None,
+        bounding_box=None,
+        merge_tiles=False,
+        remove_tiles=False
+):
+    # Assertions
+    assert type(config) is str
+    assert input_type == "single" or input_type == "dir"
+    if timeout:
+        assert type(timeout) is int
+    assert type(n_workers) is int
+    assert type(threads_per_worker) is int
+    if dry_run:
+        assert type(dry_run) is int
+    assert type(diagnostic) is bool
+    assert type(tile_size) is tuple and len(tile_size) == 2
+    if buffer:
+        assert type(buffer) is int
+    if remove_buffer:
+        assert type(remove_buffer) is bool
+    if bounding_box:
+        assert type(bounding_box) is tuple
+        assert len(bounding_box) == 4
+    assert type(merge_tiles) is bool
+    assert type(remove_tiles) is bool
+
+    with open(config, 'r') as c:
+        config_file = json.load(c)
+        input_dir = config_file.get('input')
+        output = config_file.get('output')
+        temp = config_file.get('temp')
+        pipeline = config_file.get('pipeline')
+
+    print_warnings(n_workers, input_type, input_dir, output, temp, tile_size)
+
     if not os.path.exists(temp):
         os.mkdir(temp)
 
@@ -168,35 +173,17 @@ def process_pipelines(
         delayed = do.process_serialized_pipelines(temp_dir=temp, iterator=pipeline_iterator)
     else:
         click.echo('Beginning of the execution\n')
-        # If the user don't specify the dry_run option
-        if not dry_run:
-            # If the user wants to process a single file, it is split. Else, get all the files of the input directory
-            iterator = do.splitCloud(filepath=input_dir,
-                                     output_dir=output,
-                                     json_pipeline=pipeline,
-                                     tile_bounds=tile_size,
-                                     buffer=buffer,
-                                     remove_buffer=remove_buffer,
-                                     bounding_box=bounding_box) if input_type == 'single' \
-                else file_manager.getFiles(input_directory=input_dir)
-            # Process pipelines
-            delayed = do.process_pipelines(output_dir=output, json_pipeline=pipeline, temp_dir=temp, iterator=iterator,
-                                           is_single=(input_type == 'single'))
-        else:
-            # If the user wants to process a single file, it is split and get the number of tiles given by the user.
-            # Else, get the number of files we want to do the test execution (not serialized)
-            iterator = do.splitCloud(filepath=input_dir,
-                                     output_dir=output,
-                                     json_pipeline=pipeline,
-                                     tile_bounds=tile_size,
-                                     nTiles=dry_run,
-                                     buffer=buffer,
-                                     remove_buffer=remove_buffer,
-                                     bounding_box=bounding_box) if input_type == 'single' \
-                else file_manager.getFiles(input_directory=input_dir, nFiles=dry_run)
-            # Process pipelines
-            delayed = do.process_pipelines(output_dir=output, json_pipeline=pipeline, iterator=iterator,
-                                           dry_run=dry_run, is_single=(input_type == 'single'))
+        # Process pipelines
+        if input_type == "dir":
+            iterator = file_manager.getFiles(input_directory=input_dir, nFiles=dry_run)
+            delayed = do.process_multiple_clouds(output_dir=output, json_pipeline=pipeline, iterator=iterator,
+                                                 dry_run=dry_run, is_single=(input_type == 'single'))
+        elif input_type == "single":
+            iterator = do.splitCloud(filepath=input_dir, output_dir=output, json_pipeline=pipeline,
+                                     tile_bounds=tile_size, nTiles=dry_run, buffer=buffer, remove_buffer=remove_buffer,
+                                     bounding_box=bounding_box)
+            image_array = cloud.load_image_array(pipeline, input_dir)
+            delayed = do.process_single_cloud(iterator=iterator, image_array=image_array)
 
     client = config_dask(n_workers=n_workers, threads_per_worker=threads_per_worker, timeout=timeout)
 
@@ -205,12 +192,12 @@ def process_pipelines(
     if diagnostic:
         ms = MemorySampler()
         with ms.sample(label='execution', client=client):
-            delayed = client.compute(delayed)
-            progress(delayed)
+            future = client.persist(delayed)
+            progress(future)
         ms.plot()
     else:
-        delayed = client.compute(delayed)
-        progress(delayed)
+        future = client.persist(delayed)
+        progress(future)
 
     file_manager.getEmptyWeight(output_directory=output)
 
@@ -233,7 +220,8 @@ def process_pipelines(
 if __name__ == '__main__':
     process_pipelines(
         config="D:\\data_dev\\pdal-parallelizer\\config.json",
-        input_type="dir",
+        input_type="single",
+        tile_size=(25, 25),
         timeout=500,
         n_workers=6,
         diagnostic=True

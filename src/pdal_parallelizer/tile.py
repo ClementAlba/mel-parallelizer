@@ -15,12 +15,7 @@ import json
 import os
 import cloud
 import bounds
-
-
-def load_pipeline(pipeline):
-    with open(pipeline, 'r') as ppln:
-        p = json.load(ppln)
-    return p
+import pipeline_manager
 
 
 def get_readers(pipeline):
@@ -59,7 +54,7 @@ class Tile:
         """Assign a pipeline to the tile"""
         output_dir = self.output_dir
 
-        p = load_pipeline(self.json_pipeline)
+        p = pipeline_manager.load_pipeline(self.json_pipeline)
 
         # Create the name of the temp file associated to the pipeline
         temp_name = 'temp__' + self.getName()
