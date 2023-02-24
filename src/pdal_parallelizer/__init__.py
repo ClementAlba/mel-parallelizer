@@ -177,13 +177,14 @@ def process_pipelines(
         if input_type == "dir":
             iterator = file_manager.getFiles(input_directory=input_dir, nFiles=dry_run)
             delayed = do.process_multiple_clouds(output_dir=output, json_pipeline=pipeline, iterator=iterator,
-                                                 dry_run=dry_run, is_single=(input_type == 'single'))
+                                                 temp_dir=temp, dry_run=dry_run, is_single=(input_type == 'single'))
         elif input_type == "single":
             iterator = do.splitCloud(filepath=input_dir, output_dir=output, json_pipeline=pipeline,
                                      tile_bounds=tile_size, nTiles=dry_run, buffer=buffer, remove_buffer=remove_buffer,
                                      bounding_box=bounding_box)
             image_array = cloud.load_image_array(pipeline, input_dir)
-            delayed = do.process_single_cloud(iterator=iterator, image_array=image_array)
+            delayed = do.process_single_cloud(iterator=iterator, image_array=image_array, temp_dir=temp,
+                                              dry_run=dry_run)
 
     client = config_dask(n_workers=n_workers, threads_per_worker=threads_per_worker, timeout=timeout)
 
@@ -220,8 +221,7 @@ def process_pipelines(
 if __name__ == '__main__':
     process_pipelines(
         config="D:\\data_dev\\pdal-parallelizer\\config.json",
-        input_type="single",
-        tile_size=(25, 25),
+        input_type="dir",
         timeout=500,
         n_workers=6,
         diagnostic=True

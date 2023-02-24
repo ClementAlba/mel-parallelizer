@@ -68,8 +68,12 @@ def process_serialized_pipelines(temp_dir, iterator):
     for item in iterator:
         stages = item[1]
         writers = stages.pop()
-        arrays = execute_stages_standard(stages)
-        result = write_cloud(arrays, writers, item[2], temp_dir)
+        if item[3] is not None:
+            arrays = execute_stages_streaming(stages, item[3])
+            result = write_cloud(arrays, writers, item[2], temp_dir)
+        else:
+            array = execute_stages_standard(stages)
+            result = write_cloud(array, writers, item[2], temp_dir)
         results.append(result)
 
     return results
@@ -98,7 +102,7 @@ def process_multiple_clouds(output_dir, json_pipeline, iterator, temp_dir=None, 
     return results
 
 
-def process_single_cloud(iterator, image_array):
+def process_single_cloud(iterator, image_array, temp_dir, dry_run):
     results = []
     for item in iterator:
         t = item
@@ -107,11 +111,18 @@ def process_single_cloud(iterator, image_array):
         stages = p[1]
         # Remove the readers bc we read it before
         stages.pop(0)
-        writers = stages.pop()
 
-        arrays = execute_stages_streaming(stages, image_array)
-        result = write_cloud(arrays, writers)
-        results.append(result)
+        if not dry_run:
+            serializePipeline(p, temp_dir, image_array)
+            writers = stages.pop()
+            arrays = execute_stages_streaming(stages, image_array)
+            result = write_cloud(arrays, writers, p[2], temp_dir)
+            results.append(result)
+        else:
+            writers = stages.pop()
+            arrays = execute_stages_streaming(stages, image_array)
+            result = write_cloud(arrays, writers)
+            results.append(result)
 
     return results
 
@@ -132,9 +143,11 @@ def splitCloud(filepath, output_dir, json_pipeline, tile_bounds, nTiles=None, bu
     return t.split(tile_bounds[0], tile_bounds[1], nTiles)
 
 
-def serializePipeline(pipeline, temp_dir):
+def serializePipeline(pipeline, temp_dir, arr=None):
     """Serialize the pipelines"""
     # Create the temp file path
+    pipeline = pipeline + (arr,)
+    print(pipeline)
     temp_file = temp_dir + '/' + str(pipeline[2]) + '.pickle'
     with open(temp_file, 'wb') as outfile:
         # Serialize the pipeline
